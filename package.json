@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "@maxhub/max-bot-api": "^0.2.1",
+    "@onemehub/one-me-bot-api": "^0.2.1"
+  }
+}
