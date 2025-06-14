@@ -11,145 +11,141 @@ const maxStorageSize = parseInt(process.env.MAX_STORAGE_SIZE, 10);
 const bot = new Bot(token);
 
 bot.on('bot_started', (ctx) => {
-    console.log('/start');
-    ctx.reply('Welcome to YouTube Downloader Bot!');
+	console.log('/start');
+	ctx.reply('Welcome to YouTube Downloader Bot!');
 });
 
 bot.hears(/\/video (.+)/, async (ctx) => {
-  const res = /\/video (.+)/.exec(ctx.message.body.text);
-  const [_, url] = res;
+	const res = /\/video (.+)/.exec(ctx.message.body.text);
+	const [_, url] = res;
 
-  console.log('/video', url);
+	console.log('/video', url);
 
-  ctx.reply(`DEBUG: "${url}"`);
+	if (!ytdl.validateURL(url)) {
+		ctx.reply('Invalid YouTube URL.');
 
-  console.log('==== #1');
+		return;
+	}
 
-  if (!ytdl.validateURL(url)) {
-    ctx.reply('Invalid YouTube URL.');
+	const info = await ytdl.getBasicInfo(url);
 
-    return;
-  }
+	const videoId = info.videoDetails.videoId;
+	const title = info.videoDetails.title;
+	const duration = parseInt(info.videoDetails.lengthSeconds, 10);
+	const thumbnail = info.videoDetails.thumbnails[0].url;
 
-  console.log('==== #2');
+	console.log('Video ID:', videoId);
 
-  const info = await ytdl.getInfo(url);
+	await ctx.reply(`Downloading "${title}" (${duration} seconds)...`);
 
-  console.log('==== #3');
+	db.get('SELECT * FROM videos WHERE id = ?', [videoId], async (err, row) => {
+		if (row) {
+			const image = await ctx.api.uploadImage({ url: thumbnail });
+			await ctx.reply(`Already downloaded: "${title}"`, { attachments: [image.toJson()] });
 
-  const videoId = info.videoDetails.videoId;
-  const title = info.videoDetails.title;
-  const duration = parseInt(info.videoDetails.lengthSeconds, 10);
-  const thumbnail = info.videoDetails.thumbnails[0].url;
+			const video = await ctx.api.uploadFile({
+				source: fs.readFileSync(row.filePath),
+			});
+			await ctx.reply('', { attachments: [video.toJson()] });
+		} else {
+			const filePath = path.resolve(__dirname, 'downloads', `${videoId}.mp4`);
+			const videoStream = ytdl(url, { quality: 'highestvideo' });
+			const fileStream = fs.createWriteStream(filePath);
 
-  await ctx.reply(`Downloading "${title}" (${duration} seconds)...`);
+			videoStream.pipe(fileStream);
 
-  db.get('SELECT * FROM videos WHERE id = ?', [videoId], async (err, row) => {
-    if (row) {
-      const image = await ctx.api.uploadImage({ url: thumbnail });
-      await ctx.reply(`Already downloaded: "${title}"`, { attachments: [image.toJson()] });
+			fileStream.on('finish', () => {
+				console.log('Video downloaded', videoId);
 
-      const video = await ctx.api.uploadFile({
-        source: fs.readFileSync(row.filePath),
-      });
-      await ctx.reply('', { attachments: [video.toJson()] });
-    } else {
-      const filePath = path.resolve(__dirname, 'downloads', `${videoId}.mp4`);
-      const videoStream = ytdl(url, { quality: 'highestvideo' });
-      const fileStream = fs.createWriteStream(filePath);
+				const fileSize = fs.statSync(filePath).size;
 
-      videoStream.pipe(fileStream);
+				db.run(
+					'INSERT INTO videos (id, title, duration, filePath, downloadTime, downloadCount, fileSize) VALUES (?, ?, ?, ?, ?, ?, ?)',
+					[videoId, title, duration, filePath, Date.now(), 1, fileSize],
+					async (err) => {
+						if (err) {
+							console.error(err);
 
-      fileStream.on('finish', () => {
-        const fileSize = fs.statSync(filePath).size;
+							return;
+						}
 
-        db.run(
-          'INSERT INTO videos (id, title, duration, filePath, downloadTime, downloadCount, fileSize) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [videoId, title, duration, filePath, Date.now(), 1, fileSize],
-          async (err) => {
-            if (err) {
-              console.error(err);
+						const image = await ctx.api.uploadImage({ url: thumbnail });
+						await ctx.reply(`Downloaded: "${title}"`, { attachments: [image.toJson()] });
 
-              return;
-            }
+						const video = await ctx.api.uploadFile({
+							source: fs.readFileSync(filePath),
+						});
+						await ctx.reply('', { attachments: [video.toJson()] });
 
-            const image = await ctx.api.uploadImage({ url: thumbnail });
-            await ctx.reply(`Downloaded: "${title}"`, { attachments: [image.toJson()] });
-
-            const video = await ctx.api.uploadFile({
-                source: fs.readFileSync(filePath),
-            });
-            await ctx.reply('', { attachments: [video.toJson()] });
-
-            manageStorage();
-          }
-        );
-      });
-    }
-  });
+						manageStorage();
+					}
+				);
+			});
+		}
+	});
 });
 
 bot.hears(/\/audio (.+)/, async (ctx) => {
-  const res = /\/audio (.+)/.exec(ctx.message.body.text);
-  const [_, url] = res;
+	const res = /\/audio (.+)/.exec(ctx.message.body.text);
+	const [_, url] = res;
 
-  console.log('/audio', url);
+	console.log('/audio', url);
 
-  if (!ytdl.validateURL(url)) {
-    ctx.reply('Invalid YouTube URL.');
+	if (!ytdl.validateURL(url)) {
+		ctx.reply('Invalid YouTube URL.');
 
-    return;
-  }
+		return;
+	}
 
-  const info = await ytdl.getInfo(url);
-  const videoId = info.videoDetails.videoId;
-  const title = info.videoDetails.title;
+	const info = await ytdl.getInfo(url);
+	const videoId = info.videoDetails.videoId;
+	const title = info.videoDetails.title;
 
-  ctx.reply(`Downloading audio for "${title}"...`);
+	ctx.reply(`Downloading audio for "${title}"...`);
 
-  const filePath = path.resolve(__dirname, 'downloads', `${videoId}.mp3`);
-  const audioStream = ytdl(url, { filter: 'audioonly' });
-  const fileStream = fs.createWriteStream(filePath);
+	const filePath = path.resolve(__dirname, 'downloads', `${videoId}.mp3`);
+	const audioStream = ytdl(url, { filter: 'audioonly' });
+	const fileStream = fs.createWriteStream(filePath);
 
-  audioStream.pipe(fileStream);
+	audioStream.pipe(fileStream);
 
-  fileStream.on('finish', async () => {
-    const audio = await ctx.api.uploadFile({
-        source: fs.readFileSync(filePath),
-    });
-    await ctx.reply(`Audio downloaded: "${title}"`, { attachments: [audio.toJson()] });
-  });
+	fileStream.on('finish', async () => {
+		const audio = await ctx.api.uploadFile({
+			source: fs.readFileSync(filePath),
+		});
+		await ctx.reply(`Audio downloaded: "${title}"`, { attachments: [audio.toJson()] });
+	});
 });
 
 bot.hears(/\/top/, async (ctx) => {
-  console.log('/top');
+	console.log('/top');
 
-  db.all('SELECT title, downloadCount FROM videos ORDER BY downloadCount DESC LIMIT 10', [], (err, rows) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
+	db.all('SELECT title, downloadCount FROM videos ORDER BY downloadCount DESC LIMIT 10', [], (err, rows) => {
+		if (err) {
+			console.error(err);
+			return;
+		}
 
-    const topVideos = rows.map((row, index) => `${index + 1}. ${row.title} - ${row.downloadCount} downloads`).join('\n');
+		const topVideos = rows.map((row, index) => `${index + 1}. ${row.title} - ${row.downloadCount} downloads`).join('\n');
 
-    ctx.reply(`Top 10 downloaded videos:\n${topVideos}`);
-  });
+		ctx.reply(`Top 10 downloaded videos:\n${topVideos}`);
+	});
 });
 
 bot.hears(/\/info/, (ctx) => {
-  console.log('/info');
+	console.log('/info');
 
-  db.all('SELECT SUM(fileSize) as totalSize, COUNT(*) as totalCount FROM videos', [], (err, rows) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
+	db.all('SELECT SUM(fileSize) as totalSize, COUNT(*) as totalCount FROM videos', [], (err, rows) => {
+		if (err) {
+			console.error(err);
+			return;
+		}
 
-    const totalSize = rows[0].totalSize || 0;
-    const totalCount = rows[0].totalCount || 0;
+		const totalSize = rows[0].totalSize || 0;
+		const totalCount = rows[0].totalCount || 0;
 
-    ctx.reply(`Total files: ${totalCount}\nTotal size: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
-  });
+		ctx.reply(`Total files: ${totalCount}\nTotal size: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
+	});
 });
 
 // bot.on('message_created', (ctx) => {
@@ -159,34 +155,34 @@ bot.hears(/\/info/, (ctx) => {
 // });
 
 function manageStorage() {
-  db.all('SELECT id, filePath, fileSize, downloadCount FROM videos ORDER BY downloadTime ASC', [], (err, rows) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
+	db.all('SELECT id, filePath, fileSize, downloadCount FROM videos ORDER BY downloadTime ASC', [], (err, rows) => {
+		if (err) {
+			console.error(err);
+			return;
+		}
 
-    let currentSize = rows.reduce((acc, row) => acc + row.fileSize, 0);
+		let currentSize = rows.reduce((acc, row) => acc + row.fileSize, 0);
 
-    while (currentSize > maxStorageSize && rows.length > 0) {
-      const fileToRemove = rows.shift();
+		while (currentSize > maxStorageSize && rows.length > 0) {
+			const fileToRemove = rows.shift();
 
-      fs.unlink(fileToRemove.filePath, (err) => {
-        if (err) {
-          console.error(err);
-          return;
-        }
+			fs.unlink(fileToRemove.filePath, (err) => {
+				if (err) {
+					console.error(err);
+					return;
+				}
 
-        db.run('DELETE FROM videos WHERE id = ?', [fileToRemove.id], (err) => {
-          if (err) {
-            console.error(err);
-            return;
-          }
+				db.run('DELETE FROM videos WHERE id = ?', [fileToRemove.id], (err) => {
+					if (err) {
+						console.error(err);
+						return;
+					}
 
-          currentSize -= fileToRemove.fileSize;
-        });
-      });
-    }
-  });
+					currentSize -= fileToRemove.fileSize;
+				});
+			});
+		}
+	});
 }
 
 bot.start();
