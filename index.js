@@ -1,5 +1,5 @@
 const Bot = require('@maxhub/max-bot-api').Bot;
-const ytdl = require('ytdl-core');
+const ytdl = require('@distube/ytdl-core');
 const fs = require('fs');
 const path = require('path');
 const db = require('./database');
@@ -36,33 +36,54 @@ bot.hears(/\/video (.+)/, async (ctx) => {
 
 	console.log('Video ID:', videoId);
 
-	await ctx.reply(`Downloading "${title}" (${duration} seconds)...`);
-
 	db.get('SELECT * FROM videos WHERE id = ?', [videoId], async (err, row) => {
-		if (row) {
-			const image = await ctx.api.uploadImage({ url: thumbnail });
-			await ctx.reply(`Already downloaded: "${title}"`, { attachments: [image.toJson()] });
+		const image = await ctx.api.uploadImage({ url: thumbnail });
 
+		if (row) {
 			const video = await ctx.api.uploadFile({
 				source: fs.readFileSync(row.filePath),
 			});
-			await ctx.reply('', { attachments: [video.toJson()] });
+			await ctx.reply(`Already downloaded "${title}" (${duration} seconds)...`, { attachments: [
+				image.toJson(),
+				video.toJson(),
+			] });
 		} else {
+			await ctx.reply(`Downloading "${title}" (${duration} seconds)...`, { attachments: [
+				image.toJson(),
+			] });
+
 			const filePath = path.resolve(__dirname, 'downloads', `${videoId}.mp4`);
-			// const videoStream = ytdl(url, { quality: 'highestvideo' });
+			const videoStream = ytdl(url, { quality: 'highestvideo' });
 			const fileStream = fs.createWriteStream(filePath);
 
-			try {
-				ytdl(url, { quality: 'highestvideo' }).pipe(fileStream);
-			} catch (error) {
-				console.log('==== Error:', error);
+			videoStream.pipe(fileStream);
 
-				return;
-			}
+			let downloaded = 0;
+			let total = 0;
+			let lastPercent = 0;
 
-			// videoStream.pipe(fileStream);
+			let msg = null;
+
+			videoStream.on('progress', async (chunkLength, downloadedBytes, totalBytes) => {
+				downloaded = downloadedBytes;
+				total = totalBytes;
+				const percent = Math.floor((downloaded / total) * 100);
+
+				if (percent >= lastPercent + 10) {
+					lastPercent = percent;
+					if (msg) {
+						await bot.api.editMessage(msg.body.mid, { text: `${percent}%` });
+					} else {
+						msg = await ctx.reply(`${percent}%`);
+					}
+				}
+			});
 
 			fileStream.on('finish', () => {
+				if (msg) {
+					bot.api.deleteMessage(msg.body.mid);
+				}
+
 				console.log('Video downloaded', videoId);
 
 				const fileSize = fs.statSync(filePath).size;
@@ -77,13 +98,10 @@ bot.hears(/\/video (.+)/, async (ctx) => {
 							return;
 						}
 
-						const image = await ctx.api.uploadImage({ url: thumbnail });
-						await ctx.reply(`Downloaded: "${title}"`, { attachments: [image.toJson()] });
-
 						const video = await ctx.api.uploadFile({
 							source: fs.readFileSync(filePath),
 						});
-						await ctx.reply('', { attachments: [video.toJson()] });
+						await ctx.reply('Downloaded', { attachments: [video.toJson()] });
 
 						manageStorage();
 					}
@@ -195,4 +213,4 @@ function manageStorage() {
 
 bot.start();
 
-console.log('Max Bot started', new Date(), 'with token:', process.env.MAX_BOT_TOKEN);
+console.log('Max Bot started', new Date());
