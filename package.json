@@ -1,4 +1,10 @@
 {
+  "scripts": {
+    "start": "pm2 start node index.js --name max-youtubedl-bot",
+    "stop": "pm2 stop max-youtubedl-bot && pm2 delete max-youtubedl-bot",
+    "logs": "pm2 log",
+    "dev": "node index.js"
+  },
   "devDependencies": {
     "typescript": "^5.8.2"
   },
