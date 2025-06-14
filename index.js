@@ -50,10 +50,10 @@ bot.hears(/\/video (.+)/, async (ctx) => {
 		} else {
 			const filePath = path.resolve(__dirname, 'downloads', `${videoId}.mp4`);
 			// const videoStream = ytdl(url, { quality: 'highestvideo' });
-			// const fileStream = fs.createWriteStream(filePath);
+			const fileStream = fs.createWriteStream(filePath);
 
 			try {
-				ytdl(url, { quality: 'highestvideo' }).pipe(fs.createWriteStream(filePath));
+				ytdl(url, { quality: 'highestvideo' }).pipe(fileStream);
 			} catch (error) {
 				console.log('==== Error:', error);
 
