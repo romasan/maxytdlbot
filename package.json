@@ -4,6 +4,9 @@
   },
   "dependencies": {
     "@maxhub/max-bot-api": "^0.2.1",
-    "@onemehub/one-me-bot-api": "^0.2.1"
+    "@onemehub/one-me-bot-api": "^0.2.1",
+    "dotenv": "^16.5.0",
+    "sqlite3": "^5.1.7",
+    "ytdl-core": "^4.11.5"
   }
 }
