@@ -49,10 +49,18 @@ bot.hears(/\/video (.+)/, async (ctx) => {
 			await ctx.reply('', { attachments: [video.toJson()] });
 		} else {
 			const filePath = path.resolve(__dirname, 'downloads', `${videoId}.mp4`);
-			const videoStream = ytdl(url, { quality: 'highestvideo' });
-			const fileStream = fs.createWriteStream(filePath);
+			// const videoStream = ytdl(url, { quality: 'highestvideo' });
+			// const fileStream = fs.createWriteStream(filePath);
 
-			videoStream.pipe(fileStream);
+			try {
+				ytdl(url, { quality: 'highestvideo' }).pipe(fs.createWriteStream(filePath));
+			} catch (error) {
+				console.log('==== Error:', error);
+
+				return;
+			}
+
+			// videoStream.pipe(fileStream);
 
 			fileStream.on('finish', () => {
 				console.log('Video downloaded', videoId);
@@ -97,7 +105,7 @@ bot.hears(/\/audio (.+)/, async (ctx) => {
 		return;
 	}
 
-	const info = await ytdl.getInfo(url);
+	const info = await ytdl.getBasicInfo(url);
 	const videoId = info.videoDetails.videoId;
 	const title = info.videoDetails.title;
 
