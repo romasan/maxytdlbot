@@ -79,10 +79,12 @@ bot.hears(/\/video (.+)/, async (ctx) => {
 				}
 			});
 
-			fileStream.on('finish', () => {
+			fileStream.on('finish', async () => {
 				if (msg) {
 					bot.api.deleteMessage(msg.body.mid);
 				}
+
+				msg = await ctx.reply(`Отправка файла...`);
 
 				console.log('Video downloaded', videoId);
 
@@ -101,7 +103,8 @@ bot.hears(/\/video (.+)/, async (ctx) => {
 						const video = await ctx.api.uploadFile({
 							source: fs.readFileSync(filePath),
 						});
-						await ctx.reply('Downloaded', { attachments: [video.toJson()] });
+						await bot.api.editMessage(msg.body.mid, { text: '', attachments: [video.toJson()] });
+						// await ctx.reply('', { attachments: [video.toJson()] });
 
 						manageStorage();
 					}
